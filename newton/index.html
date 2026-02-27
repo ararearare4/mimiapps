@@ -1,0 +1,269 @@
+import React, { useState, useEffect } from 'react';
+
+export default function App() {
+  const maxWater = 1000;
+  const maxHistory = 30;
+
+  const [water, setWater] = useState(500);
+  const [inflow, setInflow] = useState(20);
+  const [outflow, setOutflow] = useState(10);
+  const [history, setHistory] = useState(Array(maxHistory).fill(500));
+  const [isRunning, setIsRunning] = useState(false);
+
+  useEffect(() => {
+    if (!isRunning) return;
+    const interval = setInterval(() => {
+      setWater(prev => {
+        let next = prev + inflow - outflow;
+        if (next > maxWater) next = maxWater;
+        if (next < 0) next = 0;
+        
+        setHistory(prevHist => {
+          const newHist = [...prevHist, next];
+          return newHist.slice(1);
+        });
+        
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isRunning, inflow, outflow]);
+
+  const reset = () => {
+    setIsRunning(false);
+    setWater(500);
+    setInflow(20);
+    setOutflow(10);
+    setHistory(Array(maxHistory).fill(500));
+  };
+
+  const netFlow = inflow - outflow;
+  let timeToFullOrEmpty = Infinity;
+  let statusText = "かわらない";
+
+  if (netFlow > 0 && water < maxWater) {
+    timeToFullOrEmpty = Math.ceil((maxWater - water) / netFlow);
+    statusText = "あふれるまで";
+  } else if (netFlow < 0 && water > 0) {
+    timeToFullOrEmpty = Math.ceil(water / -netFlow);
+    statusText = "からっぽまで";
+  } else if (water >= maxWater && netFlow > 0) {
+    timeToFullOrEmpty = 0;
+    statusText = "あふれてる！";
+  } else if (water <= 0 && netFlow < 0) {
+    timeToFullOrEmpty = 0;
+    statusText = "からっぽ！";
+  }
+
+  // 水槽の描画用計算
+  const tankTop = 40;
+  const tankBottom = 160;
+  const tankLeft = 30;
+  const tankRight = 170;
+  const tankWidth = tankRight - tankLeft;
+  
+  const waterHeight = (water / maxWater) * (tankBottom - tankTop);
+  const waterY = tankBottom - waterHeight;
+
+  // グラフ描画用計算
+  const graphW = 300;
+  const graphH = 50;
+  const points = history.map((val, i) => {
+    const x = (i / (maxHistory - 1)) * graphW;
+    const y = graphH - (val / maxWater) * graphH;
+    return `${x},${y}`;
+  }).join(' ');
+
+  return (
+    <div className="min-h-[100dvh] bg-[#fcfbf9] text-[#1a1a1a] flex flex-col items-center py-2 px-2 custom-font selection:bg-cyan-200 overflow-hidden">
+      <style>
+        {`
+          @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap');
+          
+          .custom-font { font-family: 'Zen Maru Gothic', 'Kosugi Maru', 'Comic Sans MS', sans-serif; }
+          
+          @keyframes flow {
+            from { stroke-dashoffset: 20; }
+            to { stroke-dashoffset: 0; }
+          }
+          .flowing-water {
+            stroke-dasharray: 8 8;
+            animation: flow 0.3s linear infinite;
+          }
+          
+          @keyframes dabar {
+            0% { stroke-dashoffset: 40; }
+            100% { stroke-dashoffset: 0; }
+          }
+          .overflow-water {
+            stroke-dasharray: 15 15;
+            animation: dabar 0.4s linear infinite;
+          }
+
+          /* 縦スライダー用の調整（-rotate-90で回す前提） */
+          input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+            width: 130px; /* 回転後の「高さ」になる */
+          }
+          input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 24px;
+            width: 24px;
+            border-radius: 50%;
+            background: #fff;
+            border: 4px solid #1a1a1a;
+            margin-top: -10px;
+            cursor: pointer;
+            box-shadow: -2px 2px 0px #1a1a1a; /* 回転に合わせて影の向きを調整 */
+          }
+          input[type=range]::-webkit-slider-thumb:active {
+            box-shadow: 0px 0px 0px #1a1a1a;
+            transform: translate(-2px, 2px);
+          }
+          input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            background: #1a1a1a;
+            border-radius: 2px;
+          }
+        `}
+      </style>
+
+      <div className="w-full max-w-sm flex flex-col h-full flex-1 gap-3">
+        
+        {/* タイトルとステータスをまとめる */}
+        <div className="text-center">
+          <h1 className="text-2xl font-black tracking-widest mb-1">ニュートン算</h1>
+          <div className="bg-white border-[3px] border-[#1a1a1a] rounded-xl px-3 py-1 inline-block shadow-[4px_4px_0px_#1a1a1a]">
+            {timeToFullOrEmpty > 0 && timeToFullOrEmpty !== Infinity ? (
+              <span className="font-bold">{statusText} あと <span className="text-xl font-black text-red-600">{timeToFullOrEmpty}</span> 秒</span>
+            ) : (
+              <span className="font-bold">{statusText}</span>
+            )}
+          </div>
+        </div>
+
+        {/* --- メイン：左右スライダーと水槽 --- */}
+        <div className="flex justify-between items-center w-full my-2">
+          
+          {/* 左：出る水（ガバー）スライダー */}
+          <div className="flex flex-col items-center gap-1 w-[70px]">
+            <span className="font-bold text-xs text-center leading-tight">出る水<br/>(ガバー)</span>
+            <span className="font-black text-xl">{outflow}</span>
+            <div className="h-[140px] w-full flex justify-center items-center relative">
+              {/* スライダーを90度回転させて縦にする */}
+              <input 
+                type="range" min="0" max="50" step="1" 
+                value={outflow} 
+                onChange={(e) => setOutflow(Number(e.target.value))} 
+                className="absolute -rotate-90 origin-center" 
+              />
+            </div>
+          </div>
+
+          {/* 中央：水槽SVG */}
+          <div className="flex-1 max-w-[200px] relative">
+            <svg viewBox="0 0 200 220" className="w-full h-auto overflow-visible">
+              
+              {/* --- 蛇口 (右上) --- */}
+              <path d="M 210 10 L 140 10 L 140 35" fill="none" stroke="#1a1a1a" strokeWidth="6" strokeLinejoin="round" />
+              <path d="M 130 5 L 150 -5 M 130 -5 L 150 5" fill="none" stroke="#1a1a1a" strokeWidth="4" strokeLinecap="round" />
+              
+              {/* --- 注水エフェクト（ジャー） --- */}
+              {inflow > 0 && isRunning && water < maxWater && (
+                <g>
+                  <text x="100" y="20" fontSize="14" fontWeight="bold" transform="rotate(-15 100 20)" fill="#1a1a1a">ジャー</text>
+                  <line x1="140" y1="38" x2="140" y2={waterY} stroke="#1a1a1a" strokeWidth="4" className="flowing-water" />
+                  <line x1="134" y1="38" x2="134" y2={waterY} stroke="#1a1a1a" strokeWidth="2" className="flowing-water" style={{animationDuration:'0.2s'}} />
+                  <line x1="146" y1="38" x2="146" y2={waterY} stroke="#1a1a1a" strokeWidth="2" className="flowing-water" style={{animationDuration:'0.5s'}} />
+                </g>
+              )}
+
+              {/* --- 水 --- */}
+              <rect x={tankLeft+2} y={waterY} width={tankWidth-4} height={waterHeight} fill="#cffafe" className="transition-all duration-1000 ease-linear" />
+              {water > 0 && (
+                <line x1={tankLeft+2} y1={waterY} x2={tankRight-2} y2={waterY} stroke="#1a1a1a" strokeWidth="3" strokeLinecap="round" className="transition-all duration-1000 ease-linear" />
+              )}
+
+              {/* 水の中の文字（いまの水量） */}
+              <text x="100" y="120" fontSize="24" fontWeight="black" fill="#1a1a1a" textAnchor="middle" className="opacity-80">
+                {water} L
+              </text>
+
+              {/* --- 溢れるエフェクト（ダバーッ） --- */}
+              {water >= maxWater && (
+                <g>
+                  {/* 左から溢れる */}
+                  <path d={`M ${tankLeft} 40 Q 10 40 10 70 L 10 210`} stroke="#cffafe" strokeWidth="8" fill="none" className="overflow-water" />
+                  <path d={`M ${tankLeft} 40 Q 10 40 10 70 L 10 210`} stroke="#1a1a1a" strokeWidth="2" fill="none" strokeDasharray="6 6" className="overflow-water" />
+                  <text x="-5" y="100" fontSize="14" fontWeight="bold" fill="#1a1a1a" style={{ writingMode: 'vertical-rl' }}>ダバァーッ</text>
+                  
+                  {/* 右から溢れる */}
+                  <path d={`M ${tankRight} 40 Q 190 40 190 70 L 190 210`} stroke="#cffafe" strokeWidth="8" fill="none" className="overflow-water" />
+                  <path d={`M ${tankRight} 40 Q 190 40 190 70 L 190 210`} stroke="#1a1a1a" strokeWidth="2" fill="none" strokeDasharray="6 6" className="overflow-water" />
+                  <text x="205" y="100" fontSize="14" fontWeight="bold" fill="#1a1a1a" style={{ writingMode: 'vertical-rl' }}>ダバァーッ</text>
+                </g>
+              )}
+
+              {/* --- 水槽の枠 --- */}
+              {/* 左壁〜底の左穴まで */}
+              <path d={`M ${tankLeft} 40 L ${tankLeft} ${tankBottom} L 60 ${tankBottom}`} fill="none" stroke="#1a1a1a" strokeWidth="5" strokeLinejoin="round" strokeLinecap="round" />
+              {/* 底の右穴〜右壁まで */}
+              <path d={`M 90 ${tankBottom} L ${tankRight} ${tankBottom} L ${tankRight} 40`} fill="none" stroke="#1a1a1a" strokeWidth="5" strokeLinejoin="round" strokeLinecap="round" />
+
+              {/* --- 排水エフェクト（ガバー） --- */}
+              {outflow > 0 && isRunning && water > 0 && (
+                <g>
+                  <text x="95" y="200" fontSize="14" fontWeight="bold" fill="#1a1a1a">ガバー</text>
+                  <path d="M 75 162 L 60 210 M 80 162 L 80 210 M 85 162 L 100 210" fill="none" stroke="#1a1a1a" strokeWidth="3" strokeLinecap="round" className="flowing-water" />
+                </g>
+              )}
+            </svg>
+          </div>
+
+          {/* 右：入る水（ジャー）スライダー */}
+          <div className="flex flex-col items-center gap-1 w-[70px]">
+            <span className="font-bold text-xs text-center leading-tight">入る水<br/>(ジャー)</span>
+            <span className="font-black text-xl">{inflow}</span>
+            <div className="h-[140px] w-full flex justify-center items-center relative">
+              <input 
+                type="range" min="0" max="50" step="1" 
+                value={inflow} 
+                onChange={(e) => setInflow(Number(e.target.value))} 
+                className="absolute -rotate-90 origin-center" 
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* --- 下段：グラフ --- */}
+        <div className="h-20 border-[3px] border-[#1a1a1a] rounded-xl bg-white shadow-[4px_4px_0px_#1a1a1a] relative overflow-hidden mx-2">
+          <div className="absolute top-1 left-2 text-[10px] font-bold bg-white px-1 z-10 rounded border border-[#1a1a1a]">水の量のグラフ</div>
+          <svg width="100%" height="100%" viewBox={`0 0 ${graphW} ${graphH}`} preserveAspectRatio="none" className="absolute top-0 left-0 pt-4 pb-1 px-1">
+            <line x1="0" y1={graphH / 2} x2={graphW} y2={graphH / 2} stroke="#ccc" strokeWidth="2" strokeDasharray="4 4" />
+            <polyline points={points} fill="none" stroke="#1a1a1a" strokeWidth="2" strokeLinejoin="round" />
+            <polygon points={`0,${graphH} ${points} ${graphW},${graphH}`} fill="#cffafe" opacity="0.6" />
+          </svg>
+        </div>
+
+        {/* --- 最下部：ボタン --- */}
+        <div className="flex gap-3 mt-auto pb-2 px-2">
+          <button 
+            onClick={() => setIsRunning(!isRunning)}
+            className={`flex-1 py-3 border-[3px] border-[#1a1a1a] rounded-xl font-black text-lg transition-all active:translate-y-[4px] active:shadow-none shadow-[4px_4px_0px_#1a1a1a] ${isRunning ? 'bg-gray-200' : 'bg-white'}`}
+          >
+            {isRunning ? 'ストップ ⏸️' : 'スタート ▶️'}
+          </button>
+          <button 
+            onClick={reset}
+            className="px-4 py-3 border-[3px] border-[#1a1a1a] rounded-xl font-bold text-base bg-white transition-all active:translate-y-[4px] active:shadow-none shadow-[4px_4px_0px_#1a1a1a]"
+          >
+            最初から
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+}
