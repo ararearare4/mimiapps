@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ANGLE MASTER</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Babel (ブラウザ内でJSXをコンパイル) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-950">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useMemo } = React;
+
+    // --- アイコンコンポーネント ---
+    const Lightbulb = ({ className }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.9 1.2 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>
+      </svg>
+    );
+
+    const Info = ({ className }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+      </svg>
+    );
+
+    // --- メインアプリコンポーネント ---
+    function AngleMaster() {
+      const [angle1, setAngle1] = useState(60);  // 青い線の角度
+      const [angle2, setAngle2] = useState(120); // 紫の線の角度
+      const [selected, setSelected] = useState(null); // { lineId, groupId }
+
+      // --- ジオメトリ計算 ---
+      const width = 360;
+      const height = 420;
+      
+      // 平行線のY座標
+      const cyTop = 120;
+      const cyMid = 210;
+      const cyBot = 300;
+      const cxMid = 180; // 真ん中の交差点のX座標
+
+      // 角度から交点のX座標を計算
+      const rad1 = (angle1 * Math.PI) / 180;
+      const rad2 = (angle2 * Math.PI) / 180;
+      const dy = cyMid - cyTop; // 90
+
+      // 線1 (青) の上下の交点
+      const dx1 = dy / Math.tan(rad1);
+      const cxTop1 = cxMid + dx1;
+      const cxBot1 = cxMid - dx1;
+
+      // 線2 (紫) の上下の交点
+      const dx2 = dy / Math.tan(rad2);
+      const cxTop2 = cxMid + dx2;
+      const cxBot2 = cxMid - dx2;
+
+      // 斜め線の端点計算 (描画用)
+      const lineLen = 400;
+      const line1P1 = { x: cxMid + lineLen * Math.cos(rad1), y: cyMid - lineLen * Math.sin(rad1) };
+      const line1P2 = { x: cxMid - lineLen * Math.cos(rad1), y: cyMid + lineLen * Math.sin(rad1) };
+      
+      const line2P1 = { x: cxMid + lineLen * Math.cos(rad2), y: cyMid - lineLen * Math.sin(rad2) };
+      const line2P2 = { x: cxMid - lineLen * Math.cos(rad2), y: cyMid + lineLen * Math.sin(rad2) };
+
+      // --- SVGアーク描画ヘルパー ---
+      const polarToCartesian = (cx, cy, r, angleDeg) => {
+        const rad = (angleDeg * Math.PI) / 180.0;
+        return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+      };
+
+      const describeArc = (x, y, radius, startAngle, endAngle) => {
+        const start = polarToCartesian(x, y, radius, startAngle);
+        const end = polarToCartesian(x, y, radius, endAngle);
+        let diff = endAngle - startAngle;
+        if (diff < 0) diff += 360;
+        const largeArcFlag = diff <= 180 ? "0" : "1";
+        return [
+          "M", x, y,
+          "L", start.x, start.y,
+          "A", radius, radius, 0, largeArcFlag, 1, end.x, end.y,
+          "Z"
+        ].join(" ");
+      };
+
+      // --- 角度（ウェッジ）の定義 ---
+      const getWedges = (lineId, angle, cx, cy, baseId) => {
+        const calcRadius = (size) => {
+          // 角度に比例して半径を変化させる（15〜50の間で変動）
+          const r = 15 + (size / 180) * 35;
+          // 青線(1)と紫線(2)で少しだけ大きさを変えて重なりを減らす
+          return lineId === 1 ? r + 5 : r;
+        };
+
+        return [
+          { id: `${baseId}-tr`, lineId, groupId: 1, start: 360 - angle, end: 360, size: angle, cx, cy, radius: calcRadius(angle) },
+          { id: `${baseId}-tl`, lineId, groupId: 2, start: 180, end: 360 - angle, size: 180 - angle, cx, cy, radius: calcRadius(180 - angle) },
+          { id: `${baseId}-bl`, lineId, groupId: 1, start: 180 - angle, end: 180, size: angle, cx, cy, radius: calcRadius(angle) },
+          { id: `${baseId}-br`, lineId, groupId: 2, start: 0, end: 180 - angle, size: 180 - angle, cx, cy, radius: calcRadius(180 - angle) }
+        ];
+      };
+
+      const wedges = useMemo(() => [
+        // 線1 (青) の角度
+        ...getWedges(1, angle1, cxTop1, cyTop, 'L1-Top'),
+        ...getWedges(1, angle1, cxMid, cyMid, 'L1-Mid'),
+        ...getWedges(1, angle1, cxBot1, cyBot, 'L1-Bot'),
+        // 線2 (紫) の角度
+        ...getWedges(2, angle2, cxTop2, cyTop, 'L2-Top'),
+        ...getWedges(2, angle2, cxMid, cyMid, 'L2-Mid'),
+        ...getWedges(2, angle2, cxBot2, cyBot, 'L2-Bot')
+      ], [angle1, angle2, cxTop1, cxBot1, cxTop2, cxBot2]);
+
+      // 選択中の要素を一番上に描画するためのソート
+      const sortedWedges = [...wedges].sort((a, b) => {
+        const isSelectedA = selected?.lineId === a.lineId && selected?.groupId === a.groupId;
+        const isSelectedB = selected?.lineId === b.lineId && selected?.groupId === b.groupId;
+        return (isSelectedA === isSelectedB) ? 0 : isSelectedA ? 1 : -1;
+      });
+
+      // --- インタラクション ---
+      const handleWedgeClick = (w) => {
+        if (selected?.lineId === w.lineId && selected?.groupId === w.groupId) {
+          setSelected(null); // もう一度タップで解除
+        } else {
+          setSelected({ lineId: w.lineId, groupId: w.groupId });
+        }
+      };
+
+      const handleBackgroundClick = () => {
+        setSelected(null);
+      };
+
+      const getMessage = () => {
+        if (!selected) {
+          return "角をタップしてみて！ 同じ大きさの角がホワッと光るよ。";
+        }
+        const size = selected.lineId === 1 
+          ? (selected.groupId === 1 ? angle1 : 180 - angle1)
+          : (selected.groupId === 1 ? angle2 : 180 - angle2);
+          
+        return `【${size}°の角】 ホワッと光っている場所は全部同じ大きさだよ！（同位角・錯角・対頂角）`;
+      };
+
+      return (
+        <div className="min-h-screen bg-slate-950 text-slate-100 font-sans p-3 md:p-6 selection:bg-cyan-500/30 flex flex-col items-center">
+          
+          {/* ホワッと光るアニメーションのCSS */}
+          <style>{`
+            /* 目立たないスライダーのスタイル */
+            input[type=range] {
+              -webkit-appearance: none;
+              background: transparent;
+            }
+            input[type=range]:focus {
+              outline: none;
+            }
+            input[type=range]::-webkit-slider-runnable-track {
+              height: 4px;
+              background: rgba(30, 41, 59, 0.5);
+              border-radius: 2px;
+            }
+            input[type=range]::-webkit-slider-thumb {
+              -webkit-appearance: none;
+              height: 12px;
+              width: 12px;
+              border-radius: 50%;
+              cursor: pointer;
+              margin-top: -4px;
+            }
+            .slider-blue::-webkit-slider-thumb { background: rgba(14, 165, 233, 0.6); }
+            .slider-purple::-webkit-slider-thumb { background: rgba(168, 85, 247, 0.6); }
+          `}</style>
+
+          {/* ヘッダー */}
+          <header className="w-full max-w-md mb-2 text-center mt-2">
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500">
+              ANGLE MASTER
+            </h1>
+          </header>
+
+          <main className="w-full max-w-md flex flex-col gap-3">
+            
+            {/* 上部スライダー (青い線) */}
+            <div className="px-4 opacity-40 hover:opacity-100 transition-opacity duration-300">
+              <input 
+                type="range" 
+                min="30" 
+                max="150" 
+                value={angle1} 
+                onChange={(e) => setAngle1(Number(e.target.value))}
+                className="w-full slider-blue"
+              />
+            </div>
+
+            {/* メインビューワー (SVG) */}
+            <div 
+              className="relative bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-[0_0_40px_-10px_rgba(6,182,212,0.15)] group touch-none cursor-pointer"
+              onClick={handleBackgroundClick}
+            >
+              {/* 背景グリッド */}
+              <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:30px_30px] pointer-events-none" />
+              
+              <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto drop-shadow-2xl">
+                {/* 平行線 3本 */}
+                {[cyTop, cyMid, cyBot].map((y, i) => (
+                  <g key={`parallel-${i}`}>
+                    <line x1="10" y1={y} x2={width - 10} y2={y} stroke="#334155" strokeWidth="6" strokeLinecap="round" />
+                    <line x1="10" y1={y} x2={width - 10} y2={y} stroke="#cbd5e1" strokeWidth="2" strokeLinecap="round" />
+                  </g>
+                ))}
+
+                {/* 斜め線 1 (青) */}
+                <line x1={line1P1.x} y1={line1P1.y} x2={line1P2.x} y2={line1P2.y} stroke="#1e293b" strokeWidth="6" strokeLinecap="round" />
+                <line x1={line1P1.x} y1={line1P1.y} x2={line1P2.x} y2={line1P2.y} stroke="#0ea5e9" strokeWidth="2" strokeLinecap="round" className="drop-shadow-[0_0_6px_rgba(14,165,233,0.8)]" />
+
+                {/* 斜め線 2 (紫) */}
+                <line x1={line2P1.x} y1={line2P1.y} x2={line2P2.x} y2={line2P2.y} stroke="#1e293b" strokeWidth="6" strokeLinecap="round" />
+                <line x1={line2P1.x} y1={line2P1.y} x2={line2P2.x} y2={line2P2.y} stroke="#a855f7" strokeWidth="2" strokeLinecap="round" className="drop-shadow-[0_0_6px_rgba(168,85,247,0.8)]" />
+
+                {/* 角度の扇形 (ウェッジ) */}
+                {sortedWedges.map((w) => {
+                  const isSelected = selected?.lineId === w.lineId && selected?.groupId === w.groupId;
+                  const path = describeArc(w.cx, w.cy, w.radius, w.start, w.end);
+                  
+                  const inactiveFill = w.lineId === 1 ? 'rgba(14, 165, 233, 0.15)' : 'rgba(168, 85, 247, 0.15)';
+                  const inactiveStroke = w.lineId === 1 ? '#0ea5e9' : '#a855f7';
+
+                  return (
+                    <path 
+                      key={w.id}
+                      d={path} 
+                      fill={isSelected ? 'rgba(250, 204, 21, 0.7)' : inactiveFill}
+                      stroke={isSelected ? '#fde047' : inactiveStroke}
+                      strokeWidth={isSelected ? "3" : "1.5"}
+                      className={`cursor-pointer transition-colors duration-200 ${isSelected ? 'animate-pulse' : 'hover:fill-white/30'}`}
+                      style={{ filter: isSelected ? 'drop-shadow(0 0 10px rgba(250,204,21,1))' : 'none' }}
+                      onClick={(e) => {
+                        e.stopPropagation(); // 背景へのクリックイベント伝播を防ぐ
+                        handleWedgeClick(w);
+                      }}
+                    />
+                  );
+                })}
+              </svg>
+            </div>
+
+            {/* 下部スライダー (紫の線) */}
+            <div className="px-4 opacity-40 hover:opacity-100 transition-opacity duration-300">
+              <input 
+                type="range" 
+                min="30" 
+                max="150" 
+                value={angle2} 
+                onChange={(e) => setAngle2(Number(e.target.value))}
+                className="w-full slider-purple"
+              />
+            </div>
+
+            {/* ナビゲーションメッセージ */}
+            <div className="bg-slate-800/80 p-4 rounded-2xl border border-slate-700/50 flex items-start gap-3 relative overflow-hidden shadow-lg mt-2 mb-8">
+              <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-yellow-400 to-amber-500" />
+              {selected ? (
+                <Lightbulb className="w-6 h-6 text-yellow-400 shrink-0 mt-0.5 animate-pulse" />
+              ) : (
+                <Info className="w-6 h-6 text-cyan-400 shrink-0 mt-0.5" />
+              )}
+              <p className="text-slate-200 text-sm font-bold leading-relaxed">
+                {getMessage()}
+              </p>
+            </div>
+
+          </main>
+        </div>
+      );
+    }
+
+    // Reactアプリのレンダリング
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<AngleMaster />);
+  </script>
+</body>
+</html>
