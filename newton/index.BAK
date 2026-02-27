@@ -1,419 +1,269 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>SPACE TSURUKAME - レトロつるかめ算</title>
+import React, { useState, useEffect } from 'react';
+
+export default function App() {
+  const maxWater = 1000;
+  const maxHistory = 30;
+
+  const [water, setWater] = useState(500);
+  const [inflow, setInflow] = useState(20);
+  const [outflow, setOutflow] = useState(10);
+  const [history, setHistory] = useState(Array(maxHistory).fill(500));
+  const [isRunning, setIsRunning] = useState(false);
+
+  useEffect(() => {
+    if (!isRunning) return;
+    const interval = setInterval(() => {
+      setWater(prev => {
+        let next = prev + inflow - outflow;
+        if (next > maxWater) next = maxWater;
+        if (next < 0) next = 0;
+        
+        setHistory(prevHist => {
+          const newHist = [...prevHist, next];
+          return newHist.slice(1);
+        });
+        
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isRunning, inflow, outflow]);
+
+  const reset = () => {
+    setIsRunning(false);
+    setWater(500);
+    setInflow(20);
+    setOutflow(10);
+    setHistory(Array(maxHistory).fill(500));
+  };
+
+  const netFlow = inflow - outflow;
+  let timeToFullOrEmpty = Infinity;
+  let statusText = "かわらない";
+
+  if (netFlow > 0 && water < maxWater) {
+    timeToFullOrEmpty = Math.ceil((maxWater - water) / netFlow);
+    statusText = "あふれるまで";
+  } else if (netFlow < 0 && water > 0) {
+    timeToFullOrEmpty = Math.ceil(water / -netFlow);
+    statusText = "からっぽまで";
+  } else if (water >= maxWater && netFlow > 0) {
+    timeToFullOrEmpty = 0;
+    statusText = "あふれてる！";
+  } else if (water <= 0 && netFlow < 0) {
+    timeToFullOrEmpty = 0;
+    statusText = "からっぽ！";
+  }
+
+  // 水槽の描画用計算
+  const tankTop = 40;
+  const tankBottom = 160;
+  const tankLeft = 30;
+  const tankRight = 170;
+  const tankWidth = tankRight - tankLeft;
   
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- React & ReactDOM -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  
-  <!-- Babel (ブラウザ上でJSXを変換するため) -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  const waterHeight = (water / maxWater) * (tankBottom - tankTop);
+  const waterY = tankBottom - waterHeight;
 
-  <!-- レトロフォントと独自スタイル -->
-  <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      background-color: #000000; /* 黒背景にして画面全体をゲーム機のように */
-      /* スマホでのスワイプ更新などを防ぐ */
-      overscroll-behavior-y: none;
-    }
-    .font-retro { font-family: 'DotGothic16', sans-serif; }
-    .pixel-btn { box-shadow: 2px 2px 0px 0px #555; transition: all 0.1s; }
-    .pixel-btn:active { box-shadow: 0px 0px 0px 0px #555; transform: translate(2px, 2px); }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
+  // グラフ描画用計算
+  const graphW = 300;
+  const graphH = 50;
+  const points = history.map((val, i) => {
+    const x = (i / (maxHistory - 1)) * graphW;
+    const y = graphH - (val / maxWater) * graphH;
+    return `${x},${y}`;
+  }).join(' ');
 
-  <script type="text/babel">
-    const { useState, useEffect } = React;
-
-    // === Web Audio APIを使ったレトロ音源エンジン ===
-    const AudioEngine = {
-      ctx: null,
-      muted: false,
-      init() {
-        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-        if (this.ctx.state === 'suspended') this.ctx.resume();
-      },
-      toggleMute() {
-        this.muted = !this.muted;
-        return this.muted;
-      },
-      play(type) {
-        if (this.muted || !this.ctx) return;
-        const t = this.ctx.currentTime;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.connect(gain); gain.connect(this.ctx.destination);
-
-        if (type === 'start') {
-          osc.type = 'square'; osc.frequency.setValueAtTime(880, t); osc.frequency.exponentialRampToValueAtTime(1760, t + 0.1);
-          gain.gain.setValueAtTime(0.05, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
-          osc.start(t); osc.stop(t + 0.2);
-        } else if (type === 'select') {
-          osc.type = 'square'; osc.frequency.setValueAtTime(1200, t);
-          gain.gain.setValueAtTime(0.03, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-          osc.start(t); osc.stop(t + 0.05);
-        } else if (type === 'correct') {
-          osc.type = 'square';
-          [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => osc.frequency.setValueAtTime(freq, t + i * 0.08));
-          gain.gain.setValueAtTime(0.05, t); gain.gain.linearRampToValueAtTime(0, t + 0.4);
-          osc.start(t); osc.stop(t + 0.4);
-        } else if (type === 'wrong') {
-          osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, t); osc.frequency.linearRampToValueAtTime(100, t + 0.3);
-          gain.gain.setValueAtTime(0.05, t); gain.gain.linearRampToValueAtTime(0, t + 0.3);
-          osc.start(t); osc.stop(t + 0.3);
-        } else if (type === 'clear') {
-          osc.type = 'square';
-          const notes = [{f: 523.25, d: 0.15}, {f: 523.25, d: 0.15}, {f: 523.25, d: 0.15}, {f: 659.25, d: 0.3}, {f: 783.99, d: 0.3}, {f: 1046.50, d: 0.6}];
-          let time = t;
-          notes.forEach(note => { osc.frequency.setValueAtTime(note.f, time); time += note.d; });
-          gain.gain.setValueAtTime(0.05, t); gain.gain.linearRampToValueAtTime(0, time);
-          osc.start(t); osc.stop(time);
-        }
-      }
-    };
-
-    // === キャラクター定義 ===
-    const CHARACTERS = [
-      { id: '2legs', name: 'ニホンアシ', color: '#FF0000', legs: 2 },
-      { id: '3legs', name: 'サンボンアシ', color: '#00FFFF', legs: 3 },
-      { id: '4legs', name: 'ヨンホンアシ', color: '#FFB8FF', legs: 4 },
-      { id: '5legs', name: 'イツアシ', color: '#FFB852', legs: 5 },
-    ];
-
-    // モンスターコンポーネント
-    const Monster = ({ color, legs, className = "", startLegIndex = 0, userAnswers = [0,0], chars = null, gameState = 'title', totalLegs = 0, isChallenge = false }) => (
-      <div className={`relative flex flex-row w-full h-full ${className}`}>
-        <div className="absolute top-[10%] bottom-[25%] left-[2px] right-[2px] rounded-t-lg z-0" style={{ backgroundColor: color }}>
-          <div className="absolute top-[30%] left-1/2 -translate-x-1/2 flex gap-1 sm:gap-1.5">
-            <div className="w-1.5 h-2.5 sm:w-2 sm:h-3 bg-white relative">
-              <div className="absolute right-0 top-0.5 w-1 h-1 bg-blue-700"></div>
-            </div>
-            <div className="w-1.5 h-2.5 sm:w-2 sm:h-3 bg-white relative">
-              <div className="absolute right-0 top-0.5 w-1 h-1 bg-blue-700"></div>
-            </div>
-          </div>
-        </div>
-        {Array.from({length: legs}).map((_, i) => {
-          let legBg = 'white';
+  return (
+    <div className="min-h-[100dvh] bg-[#fcfbf9] text-[#1a1a1a] flex flex-col items-center py-2 px-2 custom-font selection:bg-cyan-200 overflow-hidden">
+      <style>
+        {`
+          @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap');
           
-          if (!isChallenge && gameState === 'playing' && chars && totalLegs > 0) {
-            const globalLegIndex = startLegIndex + i;
-            const leftLimit = userAnswers[0] * chars[0].legs;
-            const rightLimit = totalLegs - (userAnswers[1] * chars[1].legs);
-            
-            if (globalLegIndex < leftLimit) {
-              legBg = chars[0].color;
-            } else if (globalLegIndex >= rightLimit) {
-              legBg = chars[1].color;
-            }
+          .custom-font { font-family: 'Zen Maru Gothic', 'Kosugi Maru', 'Comic Sans MS', sans-serif; }
+          
+          @keyframes flow {
+            from { stroke-dashoffset: 20; }
+            to { stroke-dashoffset: 0; }
+          }
+          .flowing-water {
+            stroke-dasharray: 8 8;
+            animation: flow 0.3s linear infinite;
+          }
+          
+          @keyframes dabar {
+            0% { stroke-dashoffset: 40; }
+            100% { stroke-dashoffset: 0; }
+          }
+          .overflow-water {
+            stroke-dasharray: 15 15;
+            animation: dabar 0.4s linear infinite;
           }
 
-          return (
-            <div key={i} className="flex-1 flex justify-center items-end h-full z-10 pb-0.5">
-              <div 
-                className="w-[4px] sm:w-[6px] h-[25%] transition-colors duration-200 ease-in-out" 
-                style={{ backgroundColor: legBg, boxShadow: legBg !== 'white' ? `0 0 4px ${legBg}` : 'none' }}
-              ></div>
-            </div>
-          );
-        })}
-      </div>
-    );
+          /* 縦スライダー用の調整（-rotate-90で回す前提） */
+          input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+            width: 130px; /* 回転後の「高さ」になる */
+          }
+          input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 24px;
+            width: 24px;
+            border-radius: 50%;
+            background: #fff;
+            border: 4px solid #1a1a1a;
+            margin-top: -10px;
+            cursor: pointer;
+            box-shadow: -2px 2px 0px #1a1a1a; /* 回転に合わせて影の向きを調整 */
+          }
+          input[type=range]::-webkit-slider-thumb:active {
+            box-shadow: 0px 0px 0px #1a1a1a;
+            transform: translate(-2px, 2px);
+          }
+          input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            background: #1a1a1a;
+            border-radius: 2px;
+          }
+        `}
+      </style>
 
-    // メインアプリケーション
-    function App() {
-      const [gameState, setGameState] = useState('title');
-      const [questionCount, setQuestionCount] = useState(1);
-      const [problem, setProblem] = useState(null);
-      const [userAnswers, setUserAnswers] = useState([0, 0]);
-      const [isCorrect, setIsCorrect] = useState(false);
-      const [message, setMessage] = useState('');
-      const [isMuted, setIsMuted] = useState(false);
-
-      const isChallengeStage = questionCount >= 3;
-
-      const handleToggleMute = () => {
-        AudioEngine.init();
-        const muted = AudioEngine.toggleMute();
-        setIsMuted(muted);
-        if (!muted) AudioEngine.play('select');
-      };
-
-      const generateProblem = (qNum) => {
-        let charA, charB, countA, countB;
-        if (qNum === 1) {
-          charA = CHARACTERS[0]; charB = CHARACTERS[2];
-          countA = Math.floor(Math.random() * 2) + 2; countB = Math.floor(Math.random() * 2) + 1;
-        } else if (qNum === 2) {
-          const normal = [CHARACTERS[0], CHARACTERS[2]].sort(() => 0.5 - Math.random());
-          const alien = [CHARACTERS[1], CHARACTERS[3]].sort(() => 0.5 - Math.random());
-          charA = normal[0]; charB = alien[0];
-          countA = Math.floor(Math.random() * 3) + 2; countB = Math.floor(Math.random() * 2) + 2;
-        } else {
-          const shuffled = [...CHARACTERS].sort(() => 0.5 - Math.random());
-          charA = shuffled[0]; charB = shuffled[1];
-          countA = Math.floor(Math.random() * 3) + 2; countB = Math.floor(Math.random() * 3) + 2;
-        }
-
-        const sortedChars = [charA, charB].sort((a, b) => a.legs - b.legs);
-        const sortedCounts = sortedChars.map(c => c.id === charA.id ? countA : countB);
-
-        const renderList = [];
-        for (let i = 0; i < sortedCounts[0]; i++) renderList.push({ char: sortedChars[0], id: `c0_${i}` });
-        for (let i = 0; i < sortedCounts[1]; i++) renderList.push({ char: sortedChars[1], id: `c1_${i}` });
+      <div className="w-full max-w-sm flex flex-col h-full flex-1 gap-3">
         
-        const totalLegs = sortedChars[0].legs * sortedCounts[0] + sortedChars[1].legs * sortedCounts[1];
-        const unitPercent = 100 / (totalLegs + 2);
-
-        let currentLegsWidth = 1;
-        let currentLegIndex = 0;
-        renderList.forEach((item, index) => {
-          item.widthPercent = item.char.legs * unitPercent;
-          item.leftPercent = currentLegsWidth * unitPercent;
-          item.delay = index * 0.15;
-          item.startLegIndex = currentLegIndex;
-          currentLegsWidth += item.char.legs;
-          currentLegIndex += item.char.legs;
-        });
-
-        setProblem({
-          chars: sortedChars, counts: sortedCounts,
-          totalHeads: countA + countB, totalLegs: totalLegs,
-          unitPercent, renderList,
-        });
-        
-        setUserAnswers([0, 0]);
-        setIsCorrect(false);
-        setMessage('');
-        setGameState('prepare');
-      };
-
-      useEffect(() => {
-        if (gameState === 'prepare') {
-          const timer = setTimeout(() => setGameState('animating'), 100);
-          return () => clearTimeout(timer);
-        }
-        if (gameState === 'animating') {
-          const maxDelay = problem.renderList[problem.renderList.length - 1].delay;
-          const timer = setTimeout(() => {
-            setGameState('playing');
-            setMessage(isChallengeStage ? 'ダレガ ナンビキ イルカ？' : 'イロヲ ピッタリ アワセヨウ！');
-          }, (maxDelay + 1.0) * 1000);
-          return () => clearTimeout(timer);
-        }
-      }, [gameState, problem, isChallengeStage]);
-
-      const startGame = () => {
-        AudioEngine.init();
-        AudioEngine.play('start');
-        setQuestionCount(1);
-        generateProblem(1);
-      };
-
-      const updateAnswer = (index, delta) => {
-        if (gameState !== 'playing') return;
-        AudioEngine.init();
-        AudioEngine.play('select');
-        setUserAnswers((prev) => {
-          const newAns = [...prev];
-          newAns[index] = Math.max(0, newAns[index] + delta);
-          return newAns;
-        });
-      };
-
-      const checkAnswer = () => {
-        if (userAnswers[0] === problem.counts[0] && userAnswers[1] === problem.counts[1]) {
-          setIsCorrect(true);
-          setMessage('大正解!! CLEAR!!');
-          AudioEngine.play('correct');
-          setGameState('result');
-
-          setTimeout(() => {
-            if (questionCount >= 3) {
-              AudioEngine.play('clear');
-              setGameState('clear');
-            } else {
-              setQuestionCount((prev) => prev + 1);
-              generateProblem(questionCount + 1);
-            }
-          }, 3500);
-        } else {
-          AudioEngine.play('wrong');
-          setMessage('チガウ ヨウダ...');
-          setTimeout(() => {
-            setMessage(isChallengeStage ? 'ダレガ ナンビキ イルカ？' : 'イロヲ ピッタリ アワセヨウ！');
-          }, 2000);
-        }
-      };
-
-      const SoundToggle = () => (
-        <button onClick={handleToggleMute} className="absolute top-2 right-2 z-50 text-white text-xs bg-gray-800 border-2 border-gray-600 px-2 py-1 pixel-btn">
-          SOUND: {isMuted ? 'OFF' : 'ON'}
-        </button>
-      );
-
-      const currentInputHeads = userAnswers[0] + userAnswers[1];
-      const currentInputLegs = problem ? userAnswers[0] * problem.chars[0].legs + userAnswers[1] * problem.chars[1].legs : 0;
-
-      const renderTitle = () => (
-        <div className="flex flex-col items-center justify-center h-full space-y-8 p-6 text-center relative">
-          <SoundToggle />
-          <div className="space-y-4 mt-8">
-            <h1 className="text-4xl text-yellow-400 drop-shadow-[2px_2px_0_#FF0000] leading-tight">
-              SPACE<br/>TSURUKAME
-            </h1>
-            <p className="text-cyan-400 text-xs mt-4 tracking-widest">
-              3 STAGES TO CLEAR
-            </p>
+        {/* タイトルとステータスをまとめる */}
+        <div className="text-center">
+          <h1 className="text-2xl font-black tracking-widest mb-1">ニュートン算</h1>
+          <div className="bg-white border-[3px] border-[#1a1a1a] rounded-xl px-3 py-1 inline-block shadow-[4px_4px_0px_#1a1a1a]">
+            {timeToFullOrEmpty > 0 && timeToFullOrEmpty !== Infinity ? (
+              <span className="font-bold">{statusText} あと <span className="text-xl font-black text-red-600">{timeToFullOrEmpty}</span> 秒</span>
+            ) : (
+              <span className="font-bold">{statusText}</span>
+            )}
           </div>
+        </div>
+
+        {/* --- メイン：左右スライダーと水槽 --- */}
+        <div className="flex justify-between items-center w-full my-2">
           
-          <div className="flex justify-center gap-3 sm:gap-4 py-4 h-20 items-end">
-            {CHARACTERS.map((c, i) => (
-              <div key={c.id} className="animate-bounce h-16" style={{ animationDelay: `${i * 0.2}s`, width: `${c.legs * 16}px` }}>
-                <Monster color={c.color} legs={c.legs} />
-              </div>
-            ))}
+          {/* 左：出る水（ガバー）スライダー */}
+          <div className="flex flex-col items-center gap-1 w-[70px]">
+            <span className="font-bold text-xs text-center leading-tight">出る水<br/>(ガバー)</span>
+            <span className="font-black text-xl">{outflow}</span>
+            <div className="h-[140px] w-full flex justify-center items-center relative">
+              {/* スライダーを90度回転させて縦にする */}
+              <input 
+                type="range" min="0" max="50" step="1" 
+                value={outflow} 
+                onChange={(e) => setOutflow(Number(e.target.value))} 
+                className="absolute -rotate-90 origin-center" 
+              />
+            </div>
           </div>
 
-          <button onClick={startGame} className="px-6 py-3 bg-red-600 text-white border-4 border-white pixel-btn text-xl mt-8 animate-pulse">
-            START GAME
+          {/* 中央：水槽SVG */}
+          <div className="flex-1 max-w-[200px] relative">
+            <svg viewBox="0 0 200 220" className="w-full h-auto overflow-visible">
+              
+              {/* --- 蛇口 (右上) --- */}
+              <path d="M 210 10 L 140 10 L 140 35" fill="none" stroke="#1a1a1a" strokeWidth="6" strokeLinejoin="round" />
+              <path d="M 130 5 L 150 -5 M 130 -5 L 150 5" fill="none" stroke="#1a1a1a" strokeWidth="4" strokeLinecap="round" />
+              
+              {/* --- 注水エフェクト（ジャー） --- */}
+              {inflow > 0 && isRunning && water < maxWater && (
+                <g>
+                  <text x="100" y="20" fontSize="14" fontWeight="bold" transform="rotate(-15 100 20)" fill="#1a1a1a">ジャー</text>
+                  <line x1="140" y1="38" x2="140" y2={waterY} stroke="#1a1a1a" strokeWidth="4" className="flowing-water" />
+                  <line x1="134" y1="38" x2="134" y2={waterY} stroke="#1a1a1a" strokeWidth="2" className="flowing-water" style={{animationDuration:'0.2s'}} />
+                  <line x1="146" y1="38" x2="146" y2={waterY} stroke="#1a1a1a" strokeWidth="2" className="flowing-water" style={{animationDuration:'0.5s'}} />
+                </g>
+              )}
+
+              {/* --- 水 --- */}
+              <rect x={tankLeft+2} y={waterY} width={tankWidth-4} height={waterHeight} fill="#cffafe" className="transition-all duration-1000 ease-linear" />
+              {water > 0 && (
+                <line x1={tankLeft+2} y1={waterY} x2={tankRight-2} y2={waterY} stroke="#1a1a1a" strokeWidth="3" strokeLinecap="round" className="transition-all duration-1000 ease-linear" />
+              )}
+
+              {/* 水の中の文字（いまの水量） */}
+              <text x="100" y="120" fontSize="24" fontWeight="black" fill="#1a1a1a" textAnchor="middle" className="opacity-80">
+                {water} L
+              </text>
+
+              {/* --- 溢れるエフェクト（ダバーッ） --- */}
+              {water >= maxWater && (
+                <g>
+                  {/* 左から溢れる */}
+                  <path d={`M ${tankLeft} 40 Q 10 40 10 70 L 10 210`} stroke="#cffafe" strokeWidth="8" fill="none" className="overflow-water" />
+                  <path d={`M ${tankLeft} 40 Q 10 40 10 70 L 10 210`} stroke="#1a1a1a" strokeWidth="2" fill="none" strokeDasharray="6 6" className="overflow-water" />
+                  <text x="-5" y="100" fontSize="14" fontWeight="bold" fill="#1a1a1a" style={{ writingMode: 'vertical-rl' }}>ダバァーッ</text>
+                  
+                  {/* 右から溢れる */}
+                  <path d={`M ${tankRight} 40 Q 190 40 190 70 L 190 210`} stroke="#cffafe" strokeWidth="8" fill="none" className="overflow-water" />
+                  <path d={`M ${tankRight} 40 Q 190 40 190 70 L 190 210`} stroke="#1a1a1a" strokeWidth="2" fill="none" strokeDasharray="6 6" className="overflow-water" />
+                  <text x="205" y="100" fontSize="14" fontWeight="bold" fill="#1a1a1a" style={{ writingMode: 'vertical-rl' }}>ダバァーッ</text>
+                </g>
+              )}
+
+              {/* --- 水槽の枠 --- */}
+              {/* 左壁〜底の左穴まで */}
+              <path d={`M ${tankLeft} 40 L ${tankLeft} ${tankBottom} L 60 ${tankBottom}`} fill="none" stroke="#1a1a1a" strokeWidth="5" strokeLinejoin="round" strokeLinecap="round" />
+              {/* 底の右穴〜右壁まで */}
+              <path d={`M 90 ${tankBottom} L ${tankRight} ${tankBottom} L ${tankRight} 40`} fill="none" stroke="#1a1a1a" strokeWidth="5" strokeLinejoin="round" strokeLinecap="round" />
+
+              {/* --- 排水エフェクト（ガバー） --- */}
+              {outflow > 0 && isRunning && water > 0 && (
+                <g>
+                  <text x="95" y="200" fontSize="14" fontWeight="bold" fill="#1a1a1a">ガバー</text>
+                  <path d="M 75 162 L 60 210 M 80 162 L 80 210 M 85 162 L 100 210" fill="none" stroke="#1a1a1a" strokeWidth="3" strokeLinecap="round" className="flowing-water" />
+                </g>
+              )}
+            </svg>
+          </div>
+
+          {/* 右：入る水（ジャー）スライダー */}
+          <div className="flex flex-col items-center gap-1 w-[70px]">
+            <span className="font-bold text-xs text-center leading-tight">入る水<br/>(ジャー)</span>
+            <span className="font-black text-xl">{inflow}</span>
+            <div className="h-[140px] w-full flex justify-center items-center relative">
+              <input 
+                type="range" min="0" max="50" step="1" 
+                value={inflow} 
+                onChange={(e) => setInflow(Number(e.target.value))} 
+                className="absolute -rotate-90 origin-center" 
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* --- 下段：グラフ --- */}
+        <div className="h-20 border-[3px] border-[#1a1a1a] rounded-xl bg-white shadow-[4px_4px_0px_#1a1a1a] relative overflow-hidden mx-2">
+          <div className="absolute top-1 left-2 text-[10px] font-bold bg-white px-1 z-10 rounded border border-[#1a1a1a]">水の量のグラフ</div>
+          <svg width="100%" height="100%" viewBox={`0 0 ${graphW} ${graphH}`} preserveAspectRatio="none" className="absolute top-0 left-0 pt-4 pb-1 px-1">
+            <line x1="0" y1={graphH / 2} x2={graphW} y2={graphH / 2} stroke="#ccc" strokeWidth="2" strokeDasharray="4 4" />
+            <polyline points={points} fill="none" stroke="#1a1a1a" strokeWidth="2" strokeLinejoin="round" />
+            <polygon points={`0,${graphH} ${points} ${graphW},${graphH}`} fill="#cffafe" opacity="0.6" />
+          </svg>
+        </div>
+
+        {/* --- 最下部：ボタン --- */}
+        <div className="flex gap-3 mt-auto pb-2 px-2">
+          <button 
+            onClick={() => setIsRunning(!isRunning)}
+            className={`flex-1 py-3 border-[3px] border-[#1a1a1a] rounded-xl font-black text-lg transition-all active:translate-y-[4px] active:shadow-none shadow-[4px_4px_0px_#1a1a1a] ${isRunning ? 'bg-gray-200' : 'bg-white'}`}
+          >
+            {isRunning ? 'ストップ ⏸️' : 'スタート ▶️'}
+          </button>
+          <button 
+            onClick={reset}
+            className="px-4 py-3 border-[3px] border-[#1a1a1a] rounded-xl font-bold text-base bg-white transition-all active:translate-y-[4px] active:shadow-none shadow-[4px_4px_0px_#1a1a1a]"
+          >
+            最初から
           </button>
         </div>
-      );
 
-      const renderGame = () => (
-        <div className="flex flex-col h-full relative">
-          <SoundToggle />
-          <div className="bg-black border-b-4 border-blue-600 p-2 sm:p-3 shrink-0 z-30 pt-8 sm:pt-3">
-            <div className="flex items-center text-lg sm:text-xl">
-              <div className="text-white">STAGE <span className="text-red-500">{questionCount}</span></div>
-              {isChallengeStage && <div className="ml-4 text-xs text-yellow-400 animate-pulse border border-yellow-400 px-1">CHALLENGE!</div>}
-            </div>
-            
-            <div className="flex justify-between items-center mt-2 px-1 py-1 bg-gray-900 border-2 border-gray-700">
-              <div className="flex flex-col items-center w-1/2 border-r-2 border-gray-700">
-                <span className="text-cyan-400 text-[9px] sm:text-[10px]">CHARS (入力 / 全部)</span>
-                <span className={`text-xl sm:text-2xl transition-colors ${gameState === 'playing' && currentInputHeads === problem?.totalHeads ? 'text-green-400' : 'text-white'}`}>
-                  {gameState === 'playing' ? `${currentInputHeads} / ${problem?.totalHeads}` : problem?.totalHeads}
-                </span>
-              </div>
-              <div className="flex flex-col items-center w-1/2">
-                <span className="text-pink-400 text-[9px] sm:text-[10px]">LEGS (入力 / 全部)</span>
-                <span className={`text-xl sm:text-2xl transition-colors ${gameState === 'playing' && currentInputLegs === problem?.totalLegs ? 'text-green-400' : 'text-white'}`}>
-                  {gameState === 'playing' ? `${currentInputLegs} / ${problem?.totalLegs}` : problem?.totalLegs}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="relative w-full h-40 sm:h-48 bg-black overflow-hidden border-b-4 border-blue-600 shrink-0">
-            <div className="absolute top-[40%] left-0 w-full flex justify-around opacity-30">
-               {Array.from({length: 8}).map((_,i) => (<div key={i} className="w-1.5 h-1.5 bg-yellow-200 rounded-full"></div>))}
-            </div>
-            {problem?.renderList.map((item, index) => (
-              <div
-                key={`${item.id}-${index}`}
-                className="absolute bottom-0 h-full z-10"
-                style={{
-                  width: `${item.widthPercent}%`, left: `${item.leftPercent}%`,
-                  transform: gameState === 'prepare' ? 'translateX(-150vw)' : 'translateX(0)',
-                  transition: `transform 0.6s linear ${item.delay}s`
-                }}
-              >
-                <Monster 
-                  color={item.char.color} 
-                  legs={item.char.legs} 
-                  startLegIndex={item.startLegIndex}
-                  userAnswers={userAnswers}
-                  chars={problem?.chars}
-                  gameState={gameState}
-                  totalLegs={problem?.totalLegs}
-                  isChallenge={isChallengeStage}
-                />
-              </div>
-            ))}
-            <div
-              className={`absolute top-0 h-[75%] bg-blue-900 border-x-4 border-b-4 border-blue-400 transition-transform duration-700 z-20 flex flex-col justify-between p-2
-                ${(gameState === 'result' && isCorrect) || gameState === 'prepare' ? '-translate-y-full' : 'translate-y-0'}`}
-              style={{ left: `${problem ? problem.unitPercent / 2 : 5}%`, width: `${problem ? 100 - problem.unitPercent : 90}%` }}
-            >
-              <div className="border-t-2 border-dashed border-cyan-300 w-full mt-1"></div>
-              <div className="text-cyan-300 text-3xl sm:text-4xl text-center font-bold tracking-widest">???</div>
-              <div className="border-t-2 border-dashed border-cyan-300 w-full mb-1"></div>
-            </div>
-          </div>
-
-          <div className="h-10 sm:h-12 flex items-center justify-center bg-gray-900 text-yellow-300 text-sm sm:text-base border-b-2 border-gray-700 shrink-0">
-            {gameState === 'animating' ? <span className="animate-pulse">カクレル マデ マッテ...</span> : <span className={isCorrect ? 'text-green-400 animate-bounce' : ''}>{message}</span>}
-          </div>
-
-          <div className="flex-1 p-3 sm:p-4 flex flex-col justify-between bg-black overflow-y-auto">
-            <div className={`grid grid-cols-2 gap-3 sm:gap-4 ${gameState !== 'playing' ? 'opacity-50 pointer-events-none' : ''}`}>
-              {problem?.chars.map((char, index) => (
-                <div key={char.id} className="bg-gray-800 border-2 border-gray-600 p-2 sm:p-3 flex flex-col items-center">
-                  <div style={{ width: `${char.legs * 16}px`, height: '40px' }} className="mb-2">
-                    <Monster color={char.color} legs={char.legs} />
-                  </div>
-                  <div className="text-[10px] sm:text-xs text-center h-6 flex items-center justify-center font-bold" style={{ color: char.color }}>{char.name}</div>
-                  <div className="flex items-center justify-between w-full mt-1 bg-black border-2 border-gray-500 p-1">
-                    <button onClick={() => updateAnswer(index, -1)} className="w-7 h-7 sm:w-8 sm:h-8 bg-red-600 text-white font-bold pixel-btn active:bg-red-700 flex items-center justify-center text-sm sm:text-base">-</button>
-                    <span className="text-lg sm:text-xl text-white">{userAnswers[index]}</span>
-                    <button onClick={() => updateAnswer(index, 1)} className="w-7 h-7 sm:w-8 sm:h-8 bg-blue-600 text-white font-bold pixel-btn active:bg-blue-700 flex items-center justify-center text-sm sm:text-base">+</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <button onClick={checkAnswer} disabled={gameState !== 'playing'} className={`w-full py-3 sm:py-4 mt-4 border-4 pixel-btn text-lg sm:text-xl transition-colors shrink-0 ${gameState === 'playing' ? 'bg-yellow-400 border-white text-black hover:bg-yellow-300' : 'bg-gray-700 border-gray-500 text-gray-400 cursor-not-allowed'}`}>
-              ココダ！
-            </button>
-          </div>
-        </div>
-      );
-
-      const renderClear = () => (
-        <div className="flex flex-col items-center justify-center h-full space-y-8 p-6 text-center bg-black relative">
-          <SoundToggle />
-          <h2 className="text-4xl text-yellow-400 animate-pulse mt-8">CONGRATULATIONS!</h2>
-          <p className="text-white text-sm leading-loose">スベテノ ステージ ヲ<br/>クリア シマシタ！<br/>キミハ ツルカメ マスター ダ！</p>
-          <div className="flex flex-wrap justify-center gap-3 sm:gap-4 py-6 h-24 items-end">
-            {CHARACTERS.map((c, i) => (
-              <div key={c.id} className="animate-bounce h-16" style={{ animationDelay: `${i * 0.15}s`, width: `${c.legs * 16}px` }}>
-                <Monster color={c.color} legs={c.legs} />
-              </div>
-            ))}
-          </div>
-          <button onClick={() => { AudioEngine.play('start'); setGameState('title'); }} className="px-6 py-3 bg-blue-600 text-white border-4 border-white pixel-btn mt-4">
-            PLAY AGAIN
-          </button>
-        </div>
-      );
-
-      // 外枠を取り払い、画面の高さにフィットさせる
-      return (
-        <div className="min-h-[100dvh] bg-black flex justify-center font-retro selection:bg-none">
-          <div className="w-full max-w-sm min-h-[100dvh] flex flex-col relative overflow-hidden">
-            {gameState === 'title' && renderTitle()}
-            {['prepare', 'animating', 'playing', 'result'].includes(gameState) && renderGame()}
-            {gameState === 'clear' && renderClear()}
-          </div>
-        </div>
-      );
-    }
-
-    // レンダリング実行
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
-  </script>
-</body>
-</html>
+      </div>
+    </div>
+  );
+}
