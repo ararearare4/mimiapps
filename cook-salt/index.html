@@ -45,6 +45,9 @@
         function App() {
             const [weight, setWeight] = useState('');
             const [tasteLevel, setTasteLevel] = useState('normal');
+            const [dashiSalt, setDashiSalt] = useState('');
+            const [soySaucePct, setSoySaucePct] = useState('');
+            const [misoPct, setMisoPct] = useState('');
 
             const TASTE_RATIOS = {
                 light: { label: '薄め', ratio: 0.006, description: '塩分 0.6% (減塩・素材の味重視)' },
@@ -86,9 +89,20 @@
             const calculateAmount = (item) => {
                 const w = parseFloat(weight);
                 if (isNaN(w) || w <= 0) return 0;
-                
+
                 const targetSaltAmount = w * TASTE_RATIOS[tasteLevel].ratio;
-                return targetSaltAmount / item.saltContent;
+                const dashiSaltAmount = parseFloat(dashiSalt) || 0;
+                const remainingSalt = Math.max(0, targetSaltAmount - dashiSaltAmount);
+
+                let saltContent = item.saltContent;
+                if (item.id === 'soySauce' && soySaucePct !== '') {
+                    saltContent = parseFloat(soySaucePct) / 100;
+                }
+                if (item.id === 'miso' && misoPct !== '') {
+                    saltContent = parseFloat(misoPct) / 100;
+                }
+                if (!saltContent || saltContent <= 0) return 0;
+                return remainingSalt / saltContent;
             };
 
             return (
@@ -141,6 +155,63 @@
                                     {TASTE_RATIOS[tasteLevel].description}
                                 </p>
                             </div>
+
+                            <div className="bg-blue-50 rounded-xl p-4 space-y-3">
+                                <p className="text-xs font-bold text-blue-600 uppercase tracking-wide">オプション設定</p>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-600 mb-1">
+                                        だしパックなどの塩の量 (g)
+                                        <span className="ml-1 text-xs font-normal text-gray-400">※ この分を差し引いて計算します</span>
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            value={dashiSalt}
+                                            onChange={(e) => setDashiSalt(e.target.value)}
+                                            placeholder="例: 0.8"
+                                            className="w-full p-3 border-2 border-blue-200 rounded-xl focus:border-blue-400 focus:ring-4 focus:ring-blue-100 outline-none transition-all placeholder-gray-300 text-lg font-bold text-center"
+                                            inputMode="decimal"
+                                        />
+                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">g</span>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-600 mb-1">
+                                            しょうゆの塩分
+                                            <span className="block text-xs font-normal text-gray-400">空欄で標準値(16%)</span>
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type="number"
+                                                value={soySaucePct}
+                                                onChange={(e) => setSoySaucePct(e.target.value)}
+                                                placeholder="16"
+                                                className="w-full p-3 border-2 border-blue-200 rounded-xl focus:border-blue-400 focus:ring-4 focus:ring-blue-100 outline-none transition-all placeholder-gray-300 text-lg font-bold text-center"
+                                                inputMode="decimal"
+                                            />
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">%</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-600 mb-1">
+                                            みその塩分
+                                            <span className="block text-xs font-normal text-gray-400">空欄で標準値(12%)</span>
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type="number"
+                                                value={misoPct}
+                                                onChange={(e) => setMisoPct(e.target.value)}
+                                                placeholder="12"
+                                                className="w-full p-3 border-2 border-blue-200 rounded-xl focus:border-blue-400 focus:ring-4 focus:ring-blue-100 outline-none transition-all placeholder-gray-300 text-lg font-bold text-center"
+                                                inputMode="decimal"
+                                            />
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <div className="border-t border-gray-100"></div>
@@ -151,36 +222,59 @@
                                 いずれか1つを入れる場合の目安
                             </h3>
                             <div className="space-y-3">
-                                {weight && parseFloat(weight) > 0 ? (
-                                    SEASONINGS.map((item) => {
-                                        const amount = calculateAmount(item);
-                                        const spoonText = getSpoonMeasurement(amount, item.type);
-                                        
+                                {(() => {
+                                    if (!weight || parseFloat(weight) <= 0) {
                                         return (
-                                            <div key={item.id} className={`flex items-center justify-between p-4 rounded-xl border-l-4 shadow-sm transition-transform hover:scale-[1.01] ${item.color}`}>
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-full bg-white/80 flex items-center justify-center shadow-sm text-xl">
-                                                        {item.icon}
-                                                    </div>
-                                                    <span className="font-bold text-lg">{item.name}</span>
-                                                </div>
-                                                <div className="text-right">
-                                                    <div className="text-2xl font-bold leading-none">
-                                                        {Math.round(amount * 10) / 10}
-                                                        <span className="text-sm font-normal ml-1">{item.unit}</span>
-                                                    </div>
-                                                    <div className="text-xs opacity-80 font-medium mt-1">
-                                                        ({spoonText})
-                                                    </div>
-                                                </div>
+                                            <div className="text-center py-8 text-gray-400">
+                                                <p>材料の重さを入力すると<br/>計算結果が表示されます</p>
                                             </div>
                                         );
-                                    })
-                                ) : (
-                                    <div className="text-center py-8 text-gray-400">
-                                        <p>材料の重さを入力すると<br/>計算結果が表示されます</p>
-                                    </div>
-                                )}
+                                    }
+                                    const w = parseFloat(weight);
+                                    const targetSalt = w * TASTE_RATIOS[tasteLevel].ratio;
+                                    const dashiSaltAmount = parseFloat(dashiSalt) || 0;
+                                    if (dashiSaltAmount > 0 && dashiSaltAmount >= targetSalt) {
+                                        return (
+                                            <div className="text-center py-6 bg-green-50 rounded-xl border border-green-200">
+                                                <p className="text-green-700 font-bold text-lg">🎉 追加の調味料は不要です</p>
+                                                <p className="text-green-600 text-sm mt-1">だしパックの塩分で目標塩分が満たされています</p>
+                                                <p className="text-gray-400 text-xs mt-2">目標塩分: {Math.round(targetSalt * 10) / 10}g ／ だし塩分: {dashiSaltAmount}g</p>
+                                            </div>
+                                        );
+                                    }
+                                    return (
+                                        <>
+                                            {dashiSaltAmount > 0 && (
+                                                <div className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2">
+                                                    だし塩分 {dashiSaltAmount}g を差し引いた残り {Math.round((targetSalt - dashiSaltAmount) * 10) / 10}g 分を計算しています
+                                                </div>
+                                            )}
+                                            {SEASONINGS.map((item) => {
+                                                const amount = calculateAmount(item);
+                                                const spoonText = getSpoonMeasurement(amount, item.type);
+                                                return (
+                                                    <div key={item.id} className={`flex items-center justify-between p-4 rounded-xl border-l-4 shadow-sm transition-transform hover:scale-[1.01] ${item.color}`}>
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-10 h-10 rounded-full bg-white/80 flex items-center justify-center shadow-sm text-xl">
+                                                                {item.icon}
+                                                            </div>
+                                                            <span className="font-bold text-lg">{item.name}</span>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-2xl font-bold leading-none">
+                                                                {Math.round(amount * 10) / 10}
+                                                                <span className="text-sm font-normal ml-1">{item.unit}</span>
+                                                            </div>
+                                                            <div className="text-xs opacity-80 font-medium mt-1">
+                                                                ({spoonText})
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </>
+                                    );
+                                })()}
                             </div>
                         </div>
                     </div>
