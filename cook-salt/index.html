@@ -118,7 +118,7 @@
                         <div className="bg-orange-500 p-6 text-white text-center relative overflow-hidden">
                             <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
                             <ChefHat />
-                            <h1 className="text-2xl font-bold relative z-10">味付け計算機～</h1>
+                            <h1 className="text-2xl font-bold relative z-10">味付け計算機v2</h1>
                             <p className="text-orange-100 text-sm mt-1 relative z-10">失敗しない黄金比率</p>
                         </div>
 
@@ -149,8 +149,8 @@
                                             key={level}
                                             onClick={() => setTasteLevel(level)}
                                             className={`py-2 px-1 text-sm font-bold rounded-lg transition-all duration-200 ${tasteLevel === level
-                                                    ? 'bg-white text-orange-600 shadow-sm ring-1 ring-gray-200'
-                                                    : 'text-gray-400 hover:text-gray-600'
+                                                ? 'bg-white text-orange-600 shadow-sm ring-1 ring-gray-200'
+                                                : 'text-gray-400 hover:text-gray-600'
                                                 }`}
                                         >
                                             {TASTE_RATIOS[level].label}
