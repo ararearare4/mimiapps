@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:comfortable-and-happy-life.net)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(ls c:/Users/akink/Documents/GitHub/mimiapps/tsurukame/pyxel/*.pyxapp)"
     ]
   }
 }
