@@ -3,7 +3,9 @@
     "allow": [
       "WebFetch(domain:comfortable-and-happy-life.net)",
       "Bash(done)",
-      "Bash(ls c:/Users/akink/Documents/GitHub/mimiapps/tsurukame/pyxel/*.pyxapp)"
+      "Bash(ls c:/Users/akink/Documents/GitHub/mimiapps/tsurukame/pyxel/*.pyxapp)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }
